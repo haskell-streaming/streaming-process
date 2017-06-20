@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns, FlexibleContexts, MultiParamTypeClasses,
-             OverloadedStrings, RecordWildCards #-}
+             NamedFieldPuns, OverloadedStrings, RecordWildCards #-}
 
 {- |
    Module      : Streaming.Process
@@ -94,6 +94,20 @@ streamProcessHandles inp ProcessStreams{..} f =
     withOutErr = f (getBothBN defaultChunkSize stdoutSink stderrSink)
 
     closeOutErr = hClose stdoutSink >> hClose stderrSink
+
+-- | Stream input into a process, ignoring any output.
+streamInput :: (MonadIO m, MonadMask m)
+               => ProcessStreams Handle ClosedStream ClosedStream
+               -> ByteString m r -> m r
+streamInput ProcessStreams{stdinSource} inp =
+  SB.hPut stdinSource inp `finally` liftIO (hClose stdinSource)
+
+-- | Read the output from a process, ignoring stdin and stderr.
+streamOutput :: (MonadIO n, MonadIO m, MonadMask m)
+                => ProcessStreams ClosedStream Handle ClosedStream
+                -> (ByteString n () -> m r) -> m r
+streamOutput ProcessStreams{stdoutSink} f =
+  f (SB.hGet stdoutSink defaultChunkSize) `finally` liftIO (hClose stdoutSink)
 
 --------------------------------------------------------------------------------
 
