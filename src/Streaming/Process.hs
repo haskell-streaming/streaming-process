@@ -75,6 +75,12 @@ withStreamCmd = withStreamProcess . shell
 
 --------------------------------------------------------------------------------
 
+data ProcessStreams stdin stdout stderr = ProcessStreams
+  { stdinSource :: !stdin
+  , stdoutSink  :: !stdout
+  , stderrSink  :: !stderr
+  } deriving (Eq, Show)
+
 -- | A variant of 'withCheckedProcess' that will on an exception kill
 --   the child process and attempt to perform cleanup (though you
 --   should also attempt to do so in your own code).
@@ -85,10 +91,11 @@ withStreamCmd = withStreamProcess . shell
 --   this has the types arranged so as to suit 'managed'.
 withStreamingProcess :: (InputSource stdin, OutputSink stdout, OutputSink stderr
                         , MonadIO m, MonadMask m)
-                        => CreateProcess -> ((stdin, stdout, stderr) -> m r) -> m r
+                        => CreateProcess
+                        -> (ProcessStreams stdin stdout stderr -> m r) -> m r
 withStreamingProcess cp f = do
   (stdin, stdout, stderr, sph) <- streamingProcess cp
-  r <- f (stdin, stdout, stderr)
+  r <- f (ProcessStreams stdin stdout stderr)
          `onException` terminateStreamingProcess sph
   ec <- waitForStreamingProcess sph `finally` closeStreamingProcessHandle sph
   case ec of
