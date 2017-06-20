@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns, FlexibleContexts, MultiParamTypeClasses,
-             OverloadedStrings #-}
+             OverloadedStrings, RecordWildCards #-}
 
 {- |
    Module      : Streaming.Process
@@ -72,6 +72,28 @@ withStreamCmd :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
                   => String -> ByteString m r
                   -> (StdOutErr m () -> m v) -> m ((r, v), ExitCode)
 withStreamCmd = withStreamProcess . shell
+
+--------------------------------------------------------------------------------
+
+-- | Feeds the provided data into the input handle, then concurrently
+--   streams stdout and stderr into the provided continuation.
+--
+--   Note that the monad used in the 'StdOutErr' argument to the
+--   continuation can be different from the final result, as it's up
+--   to the caller to make sure the result is reached.
+streamProcessHandles :: (MonadBaseControl IO m, MonadIO m, MonadMask m, MonadBaseControl IO n)
+                        => ByteString m v -> ProcessStreams Handle Handle Handle
+                        -> (StdOutErr n () -> m r) -> m r
+streamProcessHandles inp ProcessStreams{..} f =
+  runConcurrently (flip const <$> Concurrently withIn
+                              <*> Concurrently withOutErr)
+  `finally` liftIO closeOutErr
+  where
+    withIn = SB.hPut stdinSource inp `finally` liftIO (hClose stdinSource)
+
+    withOutErr = f (getBothBN defaultChunkSize stdoutSink stderrSink)
+
+    closeOutErr = hClose stdoutSink >> hClose stderrSink
 
 --------------------------------------------------------------------------------
 
