@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleContexts, MultiParamTypeClasses, OverloadedStrings #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, MultiParamTypeClasses,
+             OverloadedStrings #-}
 
 {- |
    Module      : Streaming.Process
@@ -32,28 +33,29 @@ import System.Process                  (CreateProcess(..), StdStream(..), shell)
 
 --------------------------------------------------------------------------------
 
-streamProcess :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
-                 => CreateProcess -> ByteString m r -> ByteString (ByteString m) (r, ExitCode)
-streamProcess cp inp = do (inH, outH, errH, sph) <- streamingProcess cp
-                          (r, out) <- lift2 (runConcurrently ((,) <$> Concurrently (withIn inH)
-                                                                  <*> Concurrently (withOut outH errH))
-                                             `finally` (liftBase (hClose outH >> hClose errH))
-                                             `onException` terminateStreamingProcess sph)
-                          ec <- waitForStreamingProcess sph
-                          (r, ec) <$ out
+withStreamProcess :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
+                     => CreateProcess -> ByteString m r
+                     -> (ByteString (ByteString m) () -> m v)
+                     -> m ((r, v), ExitCode)
+withStreamProcess cp inp f =
+  do (inH, outH, errH, sph) <- streamingProcess cp
+     res <- runConcurrently ((,) <$> Concurrently (withIn inH)
+                                 <*> Concurrently (withOut outH errH))
+            `finally` (liftBase (hClose outH >> hClose errH))
+            `onException` terminateStreamingProcess sph
+     ec <- waitForStreamingProcess sph
+     return (res, ec)
   where
     -- withIn :: Handle -> m r
     withIn inH = SB.hPut inH inp `finally` liftBase (hClose inH)
 
-    -- withOut :: Handle -> Handle -> m (ByteString (ByteString m) ())
-    withOut outH errH = return (getBothBN defaultChunkSize outH errH)
+    -- withOut :: Handle -> Handle -> m v
+    withOut outH errH = f (getBothBN defaultChunkSize outH errH)
 
-    -- lift2 :: (Monad n) => n a -> ByteString (ByteString n) a
-    lift2 = hoist lift . lift
-
-streamCmd :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
-             => String -> ByteString m r -> ByteString (ByteString m) (r, ExitCode)
-streamCmd = streamProcess . shell
+withStreamCmd :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
+                  => String -> ByteString m r
+                  -> (ByteString (ByteString m) () -> m v) -> m ((r, v), ExitCode)
+withStreamCmd = withStreamProcess . shell
 
 terminateStreamingProcess :: (MonadBase IO m) => StreamingProcessHandle -> m ()
 terminateStreamingProcess = liftBase . terminateProcess . streamingProcessHandleRaw
@@ -70,9 +72,9 @@ getBothN n h1 h2 | n > 0 = loopBoth
     get1 = liftBase (B.hGetSome h1 n)
     get2 = liftBase (B.hGetSome h2 n)
 
-    loopBoth = do res <- lift (do getA1 <- async get1
-                                  getA2 <- async get2
-                                  waitEitherCancel getA1 getA2)
+    loopBoth = do !res <- lift (do getA1 <- async get1
+                                   getA2 <- async get2
+                                   waitEitherCancel getA1 getA2)
                   -- As soon as either one
                   -- returns empty, then
                   -- focus on the other.
