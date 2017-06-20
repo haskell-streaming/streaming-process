@@ -82,39 +82,39 @@ withStreamCmd = withStreamProcess . shell
 --   continuation can be different from the final result, as it's up
 --   to the caller to make sure the result is reached.
 withProcessHandles :: (MonadBaseControl IO m, MonadIO m, MonadMask m, MonadBaseControl IO n)
-                      => ByteString m v -> ProcessStreams Handle Handle Handle
+                      => ByteString m v -> StreamProcess Handle Handle Handle
                       -> (StdOutErr n () -> m r) -> m r
-withProcessHandles inp ProcessStreams{..} f =
+withProcessHandles inp StreamProcess{..} f =
   runConcurrently (flip const <$> Concurrently withIn
                               <*> Concurrently withOutErr)
   `finally` liftIO closeOutErr
   where
-    withIn = SB.hPut stdinSource inp `finally` liftIO (hClose stdinSource)
+    withIn = SB.hPut toStdin inp `finally` liftIO (hClose toStdin)
 
-    withOutErr = f (getBothBN defaultChunkSize stdoutSink stderrSink)
+    withOutErr = f (getBothBN defaultChunkSize fromStdout fromStderr)
 
-    closeOutErr = hClose stdoutSink >> hClose stderrSink
+    closeOutErr = hClose fromStdout >> hClose fromStderr
 
 -- | Stream input into a process, ignoring any output.
 processInput :: (MonadIO m, MonadMask m)
-                => ProcessStreams Handle ClosedStream ClosedStream
+                => StreamProcess Handle ClosedStream ClosedStream
                 -> ByteString m r -> m r
-processInput ProcessStreams{stdinSource} inp =
-  SB.hPut stdinSource inp `finally` liftIO (hClose stdinSource)
+processInput StreamProcess{toStdin} inp =
+  SB.hPut toStdin inp `finally` liftIO (hClose toStdin)
 
 -- | Read the output from a process, ignoring stdin and stderr.
 withProcessOutput :: (MonadIO n, MonadIO m, MonadMask m)
-                     => ProcessStreams ClosedStream Handle ClosedStream
+                     => StreamProcess ClosedStream Handle ClosedStream
                      -> (ByteString n () -> m r) -> m r
-withProcessOutput ProcessStreams{stdoutSink} f =
-  f (SB.hGet stdoutSink defaultChunkSize) `finally` liftIO (hClose stdoutSink)
+withProcessOutput StreamProcess{fromStdout} f =
+  f (SB.hGet fromStdout defaultChunkSize) `finally` liftIO (hClose fromStdout)
 
 --------------------------------------------------------------------------------
 
-data ProcessStreams stdin stdout stderr = ProcessStreams
-  { stdinSource :: !stdin
-  , stdoutSink  :: !stdout
-  , stderrSink  :: !stderr
+data StreamProcess stdin stdout stderr = StreamProcess
+  { toStdin    :: !stdin
+  , fromStdout :: !stdout
+  , fromStderr :: !stderr
   } deriving (Eq, Show)
 
 -- | A variant of 'withCheckedProcess' that will on an exception kill
@@ -128,10 +128,10 @@ data ProcessStreams stdin stdout stderr = ProcessStreams
 withStreamingProcess :: (InputSource stdin, OutputSink stdout, OutputSink stderr
                         , MonadIO m, MonadMask m)
                         => CreateProcess
-                        -> (ProcessStreams stdin stdout stderr -> m r) -> m r
+                        -> (StreamProcess stdin stdout stderr -> m r) -> m r
 withStreamingProcess cp f = do
   (stdin, stdout, stderr, sph) <- streamingProcess cp
-  r <- f (ProcessStreams stdin stdout stderr)
+  r <- f (StreamProcess stdin stdout stderr)
          `onException` terminateStreamingProcess sph
   ec <- waitForStreamingProcess sph `finally` closeStreamingProcessHandle sph
   case ec of
