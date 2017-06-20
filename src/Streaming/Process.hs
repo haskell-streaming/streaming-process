@@ -26,17 +26,13 @@ import qualified Streaming.Prelude                  as S
 
 import Control.Concurrent.Async.Lifted (Concurrently(..), async,
                                         waitEitherCancel)
-import Control.Monad.Base              (MonadBase, liftBase)
-import Control.Monad.Catch             (MonadMask, finally, onException)
+import Control.Monad.Base              (liftBase)
+import Control.Monad.Catch             (MonadMask, finally, onException, throwM)
 import Control.Monad.IO.Class          (MonadIO)
 import Control.Monad.Trans.Class       (lift)
 import Control.Monad.Trans.Control     (MonadBaseControl)
-import Data.Streaming.Process          (StreamingProcessHandle,
-                                        streamingProcess,
-                                        streamingProcessHandleRaw,
-                                        terminateProcess,
-                                        waitForStreamingProcess)
-import System.Exit                     (ExitCode)
+import Data.Streaming.Process
+import System.Exit                     (ExitCode(..))
 import System.IO                       (Handle, hClose)
 import System.Process                  (CreateProcess(..), shell)
 
@@ -77,8 +73,32 @@ withStreamCmd :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
                   -> (StdOutErr m () -> m v) -> m ((r, v), ExitCode)
 withStreamCmd = withStreamProcess . shell
 
-terminateStreamingProcess :: (MonadBase IO m) => StreamingProcessHandle -> m ()
-terminateStreamingProcess = liftBase . terminateProcess . streamingProcessHandleRaw
+--------------------------------------------------------------------------------
+
+-- | A variant of 'withCheckedProcess' that will on an exception kill
+--   the child process and attempt to perform cleanup (though you
+--   should also attempt to do so in your own code).
+--
+--   Will throw 'ProcessExitedUnsuccessfully' on a non-successful exit code.
+--
+--   Compared to @withCheckedProcessCleanup@ from @conduit-extra@,
+--   this has the types arranged so as to suit 'managed'.
+withStreamingProcess :: (InputSource stdin, OutputSink stdout, OutputSink stderr
+                        , MonadIO m, MonadMask m)
+                        => CreateProcess -> ((stdin, stdout, stderr) -> m r) -> m r
+withStreamingProcess cp f = do
+  (stdin, stdout, stderr, sph) <- streamingProcess cp
+  r <- f (stdin, stdout, stderr)
+         `onException` terminateStreamingProcess sph
+  ec <- waitForStreamingProcess sph `finally` closeStreamingProcessHandle sph
+  case ec of
+    ExitSuccess   -> return r
+    ExitFailure _ -> throwM (ProcessExitedUnsuccessfully cp ec)
+
+terminateStreamingProcess :: (MonadIO m) => StreamingProcessHandle -> m ()
+terminateStreamingProcess = liftIO . terminateProcess . streamingProcessHandleRaw
+
+--------------------------------------------------------------------------------
 
 getBothBN :: (MonadBaseControl IO m) => Int -> Handle -> Handle -> ByteString (ByteString m) ()
 getBothBN n h1 h2 = SB.fromChunks . hoist SB.fromChunks . S.partitionEithers
