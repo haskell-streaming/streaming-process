@@ -33,10 +33,13 @@ import System.Process                  (CreateProcess(..), StdStream(..), shell)
 
 --------------------------------------------------------------------------------
 
+-- | A representation of the concurrent streaming of both @stdout@ and
+--   @stderr@.
+type StdOutErr m r = ByteString (ByteString m) r
+
 withStreamProcess :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
                      => CreateProcess -> ByteString m r
-                     -> (ByteString (ByteString m) () -> m v)
-                     -> m ((r, v), ExitCode)
+                     -> (StdOutErr m () -> m v) -> m ((r, v), ExitCode)
 withStreamProcess cp inp f =
   do (inH, outH, errH, sph) <- streamingProcess cp
      res <- runConcurrently ((,) <$> Concurrently (withIn inH)
@@ -54,7 +57,7 @@ withStreamProcess cp inp f =
 
 withStreamCmd :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
                   => String -> ByteString m r
-                  -> (ByteString (ByteString m) () -> m v) -> m ((r, v), ExitCode)
+                  -> (StdOutErr m () -> m v) -> m ((r, v), ExitCode)
 withStreamCmd = withStreamProcess . shell
 
 terminateStreamingProcess :: (MonadBase IO m) => StreamingProcessHandle -> m ()
