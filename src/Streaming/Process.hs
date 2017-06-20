@@ -8,28 +8,37 @@
    License     : MIT
    Maintainer  : Ivan.Miljenovic@gmail.com
 
-
+   Run system commands in a streaming fashion.
 
  -}
-module Streaming.Process where
+module Streaming.Process
+  ( StdOutErr
+  , withStreamProcess
+  , withStreamCmd
+  ) where
 
 import qualified Data.ByteString                    as B
 import           Data.ByteString.Streaming          (ByteString)
 import qualified Data.ByteString.Streaming          as SB
 import           Data.ByteString.Streaming.Internal (defaultChunkSize)
-import           Streaming
+import           Streaming                          (Of, Stream, hoist)
 import qualified Streaming.Prelude                  as S
 
 import Control.Concurrent.Async.Lifted (Concurrently(..), async,
                                         waitEitherCancel)
 import Control.Monad.Base              (MonadBase, liftBase)
 import Control.Monad.Catch             (MonadMask, finally, onException)
+import Control.Monad.IO.Class          (MonadIO)
 import Control.Monad.Trans.Class       (lift)
 import Control.Monad.Trans.Control     (MonadBaseControl)
-import Data.Streaming.Process
+import Data.Streaming.Process          (StreamingProcessHandle,
+                                        streamingProcess,
+                                        streamingProcessHandleRaw,
+                                        terminateProcess,
+                                        waitForStreamingProcess)
 import System.Exit                     (ExitCode)
 import System.IO                       (Handle, hClose)
-import System.Process                  (CreateProcess(..), StdStream(..), shell)
+import System.Process                  (CreateProcess(..), shell)
 
 --------------------------------------------------------------------------------
 
@@ -37,6 +46,12 @@ import System.Process                  (CreateProcess(..), StdStream(..), shell)
 --   @stderr@.
 type StdOutErr m r = ByteString (ByteString m) r
 
+-- | Run a process, feeding the provided stream to it and providing
+--   both the @stdout@ and @stderr@ to the callback.
+--
+--   Ideally, this function would just return the resultant
+--   'ByteString'; however, it isn't possible to ensure that the
+--   handles are successfully closed upon termination in that case.
 withStreamProcess :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
                      => CreateProcess -> ByteString m r
                      -> (StdOutErr m () -> m v) -> m ((r, v), ExitCode)
@@ -55,6 +70,8 @@ withStreamProcess cp inp f =
     -- withOut :: Handle -> Handle -> m v
     withOut outH errH = f (getBothBN defaultChunkSize outH errH)
 
+-- | A variant of 'withStreamProcess' that runs the provided command
+--   in a shell.
 withStreamCmd :: (MonadIO m, MonadBaseControl IO m, MonadMask m)
                   => String -> ByteString m r
                   -> (StdOutErr m () -> m v) -> m ((r, v), ExitCode)
