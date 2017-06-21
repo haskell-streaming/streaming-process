@@ -32,6 +32,7 @@ module Streaming.Process
   , withStreamingOutputCommand
     -- * Lower level
   , StreamProcess(..)
+  , switchOutputs
   , withStreamProcess
   , withStreamCommand
   , withProcessHandles
@@ -155,6 +156,16 @@ data StreamProcess stdin stdout stderr = StreamProcess
   , fromStdout :: !stdout
   , fromStderr :: !stderr
   } deriving (Eq, Show)
+
+-- | Switch the two outputs.  Useful for example if using
+--   'withStreamProcess' and 'withProcessHandles' but wanting to deal
+--   with any potential output from stderr before stdout.
+switchOutputs :: StreamProcess stdin stdout stderr
+                 -> StreamProcess stdin stderr stdout
+switchOutputs sp@StreamProcess{fromStdout, fromStderr}
+  = sp { fromStdout = fromStderr
+       , fromStderr = fromStdout
+       }
 
 -- | A variant of 'withCheckedProcess' that will on an exception kill
 --   the child process and attempt to perform cleanup (though you
