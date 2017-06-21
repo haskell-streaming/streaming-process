@@ -13,10 +13,9 @@
    These functions are typically written to be used in a
    continuation-passing style to allow for proper finalisation.  The
    type signatures are designed so as to allow them to be used with
-   @ContT@ from "Control.Monad.Trans.Cont" or -- if you will be
-   running it all directly in IO with no other transformers on the
-   stack -- the <http://hackage.haskell.org/package/managed managed>
-   package.
+   @ContT@ from "Control.Monad.Trans.Cont" or - if you will be running
+   it all directly in IO with no other transformers on the stack - the
+   <http://hackage.haskell.org/package/managed managed> package.
 
    These functions will all throw 'ProcessExitedUnsuccessfully' if the
    process\/command itself fails.
@@ -150,7 +149,7 @@ withProcessOutput StreamProcess{fromStdout} f =
 
 --------------------------------------------------------------------------------
 
--- | Represents the inputs and outputs for a streaming process.
+-- | Represents the input and outputs for a streaming process.
 data StreamProcess stdin stdout stderr = StreamProcess
   { toStdin    :: !stdin
   , fromStdout :: !stdout
@@ -174,7 +173,8 @@ switchOutputs sp@StreamProcess{fromStdout, fromStderr}
 --   Will throw 'ProcessExitedUnsuccessfully' on a non-successful exit code.
 --
 --   Compared to @withCheckedProcessCleanup@ from @conduit-extra@,
---   this has the types arranged so as to suit 'managed'.
+--   this has the three parameters grouped into 'StreamProcess' to
+--   make it more of a continuation.
 withStreamProcess :: (InputSource stdin, OutputSink stdout, OutputSink stderr
                      , MonadIO m, MonadMask m)
                      => CreateProcess
@@ -204,16 +204,17 @@ terminateStreamingProcess = liftIO . terminateProcess . streamingProcessHandleRa
 -- | A representation of the concurrent streaming of both @stdout@ and
 --   @stderr@ (contrast to 'SB.hGet').
 --
---   Chunks are guaranteed to be no larger than the size specified,
---   but may be smaller to improve responsiveness and avoid blocking.
---
 --   Note that if for example you wish to completely discard stderr,
 --   you can do so with @'hoist' 'SB.effects'@ (or just process the
 --   stdout, then run 'SB.effects' at the end to discard the stderr).
 type StdOutErr m r = ByteString (ByteString m) r
 
 -- | Get both stdout and stderr concurrently.
-getStreamingOutputsN :: (MonadBaseControl IO m) => Int -> StreamProcess stdin Handle Handle
+--
+--   Chunks are guaranteed to be no larger than the size specified,
+--   but may be smaller to improve responsiveness and avoid blocking.
+getStreamingOutputsN :: (MonadBaseControl IO m) => Int
+                        -> StreamProcess stdin Handle Handle
                         -> StdOutErr m ()
 getStreamingOutputsN n _ | n <= 0 = return ()
 getStreamingOutputsN n StreamProcess{fromStdout, fromStderr} =
