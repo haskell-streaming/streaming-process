@@ -10,6 +10,17 @@
 
    Run system commands in a streaming fashion.
 
+   These functions are typically written to be used in a
+   continuation-passing style to allow for proper finalisation.  The
+   type signatures are designed so as to allow them to be used with
+   @ContT@ from "Control.Monad.Trans.Cont" or -- if you will be
+   running it all directly in IO with no other transformers on the
+   stack -- the <http://hackage.haskell.org/package/managed managed>
+   package.
+
+   These functions will all throw 'ProcessExitedUnsuccessfully' if the
+   process\/command itself fails.
+
  -}
 module Streaming.Process
   ( -- * High level functions
@@ -29,6 +40,8 @@ module Streaming.Process
     -- * Interleaved stdout and stderr
   , StdOutErr
   , getStreamingOutputsN
+    -- * Re-exports
+  , ProcessExitedUnsuccessfully(..)
   ) where
 
 import qualified Data.ByteString                    as B
