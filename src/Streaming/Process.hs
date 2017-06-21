@@ -11,7 +11,25 @@
    Run system commands in a streaming fashion.
 
  -}
-module Streaming.Process where
+module Streaming.Process
+  ( -- * High level functions
+    withStreamingProcess
+  , withStreamingCommand
+  , streamInput
+  , streamInputCommand
+  , withStreamingOutput
+  , withStreamingOutputCommand
+    -- * Lower level
+  , StreamProcess(..)
+  , withStreamProcess
+  , withStreamCommand
+  , withProcessHandles
+  , processInput
+  , withProcessOutput
+    -- * Interleaved stdout and stderr
+  , StdOutErr
+  , getStreamingOutputsN
+  ) where
 
 import qualified Data.ByteString                    as B
 import           Data.ByteString.Streaming          (ByteString)
