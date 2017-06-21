@@ -114,7 +114,10 @@ terminateStreamingProcess = liftIO . terminateProcess . streamingProcessHandleRa
 --------------------------------------------------------------------------------
 
 -- | A representation of the concurrent streaming of both @stdout@ and
---   @stderr@.
+--   @stderr@ (contrast to 'SB.hGet').
+--
+--   Chunks are guaranteed to be no larger than the size specified,
+--   but may be smaller to improve responsiveness and avoid blocking.
 --
 --   Note that if for example you wish to completely discard stderr,
 --   you can do so with @'hoist' 'SB.effects'@ (or just process the
