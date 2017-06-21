@@ -41,7 +41,7 @@ module Streaming.Process
   , StdOutErr
   , getStreamingOutputsN
     -- * Re-exports
-  , ProcessExitedUnsuccessfully(..)
+  , module Data.Streaming.Process
   ) where
 
 import qualified Data.ByteString                    as B
