@@ -34,6 +34,52 @@ import System.Process                  (CreateProcess(..), shell)
 
 --------------------------------------------------------------------------------
 
+-- | Feeds the provided data into the specified process, then
+--   concurrently streams stdout and stderr into the provided
+--   continuation.
+--
+--   Note that the monad used in the 'StdOutErr' argument to the
+--   continuation can be different from the final result, as it's up
+--   to the caller to make sure the result is reached.
+withStreamingProcess :: (MonadBaseControl IO m, MonadIO m, MonadMask m
+                        , MonadBaseControl IO n)
+                        => CreateProcess -> ByteString m v
+                        -> (StdOutErr n () -> m r) -> m r
+withStreamingProcess cp inp = withStreamProcess cp
+                              . flip (withProcessHandles inp)
+
+-- | As with 'withStreamingProcess', but run the specified command in
+--   a shell.
+withStreamingCommand :: (MonadBaseControl IO m, MonadIO m, MonadMask m
+                        , MonadBaseControl IO n)
+                        => String -> ByteString m v
+                        -> (StdOutErr n () -> m r) -> m r
+withStreamingCommand = withStreamingProcess . shell
+
+-- | Feed input into a process with no expected output.
+streamInput :: (MonadIO m, MonadMask m) => CreateProcess
+               -> ByteString m r -> m r
+streamInput cp = withStreamProcess cp . flip processInput
+
+-- | As with 'streamInput' but run the specified command in a shell.
+streamInputCommand :: (MonadIO m, MonadMask m) => String
+                      -> ByteString m r -> m r
+streamInputCommand = streamInput . shell
+
+-- | Obtain the output of a process with no input (ignoring error
+--   output).
+withStreamingOutput :: (MonadIO n, MonadIO m, MonadMask m)
+                       => CreateProcess
+                       -> (ByteString n () -> m r) -> m r
+withStreamingOutput cp = withStreamProcess cp . flip withProcessOutput
+
+-- | As with 'withStreamingOutput' but run the specified command in a
+--  shell.
+withStreamingOutputCommand :: (MonadIO n, MonadIO m, MonadMask m)
+                              => String
+                              -> (ByteString n () -> m r) -> m r
+withStreamingOutputCommand = withStreamingOutput . shell
+
 --------------------------------------------------------------------------------
 
 -- | Feeds the provided data into the input handle, then concurrently
