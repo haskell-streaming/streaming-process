@@ -40,8 +40,11 @@ module Streaming.Process
     -- * Interleaved stdout and stderr
   , StdOutErr
   , getStreamingOutputsN
+    -- * Extra functions
+  , withStreamingFile
     -- * Re-exports
   , module Data.Streaming.Process
+  , IOMode(..)
   ) where
 
 import qualified Data.ByteString                    as B
@@ -54,13 +57,15 @@ import qualified Streaming.Prelude                  as S
 import Control.Concurrent.Async.Lifted (Concurrently(..), async,
                                         waitEitherCancel)
 import Control.Monad.Base              (liftBase)
-import Control.Monad.Catch             (MonadMask, finally, onException, throwM)
+import Control.Monad.Catch             (MonadMask, bracket, finally,
+                                        onException, throwM)
 import Control.Monad.IO.Class          (MonadIO, liftIO)
 import Control.Monad.Trans.Class       (lift)
 import Control.Monad.Trans.Control     (MonadBaseControl)
 import Data.Streaming.Process
 import System.Exit                     (ExitCode(..))
-import System.IO                       (Handle, hClose)
+import System.IO                       (Handle, IOMode(..), hClose,
+                                        openBinaryFile)
 import System.Process                  (CreateProcess(..), shell)
 
 --------------------------------------------------------------------------------
@@ -241,3 +246,10 @@ getStreamingOutputsN n StreamProcess{fromStdout, fromStderr} =
                 if B.null b
                    then return ()
                    else S.yield (f b) >> go
+
+--------------------------------------------------------------------------------
+-- Auxiliary
+
+-- | A lifted variant of 'System.IO.withBinaryFile'.
+withStreamingFile :: (MonadMask m, MonadIO m) => FilePath -> IOMode -> (Handle -> m r) -> m r
+withStreamingFile fp md = bracket (liftIO (openBinaryFile fp md)) (liftIO . hClose)
