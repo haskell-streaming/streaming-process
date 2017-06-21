@@ -87,11 +87,11 @@ data StreamProcess stdin stdout stderr = StreamProcess
 --
 --   Compared to @withCheckedProcessCleanup@ from @conduit-extra@,
 --   this has the types arranged so as to suit 'managed'.
-withStreamingProcess :: (InputSource stdin, OutputSink stdout, OutputSink stderr
-                        , MonadIO m, MonadMask m)
-                        => CreateProcess
-                        -> (StreamProcess stdin stdout stderr -> m r) -> m r
-withStreamingProcess cp f = do
+withStreamProcess :: (InputSource stdin, OutputSink stdout, OutputSink stderr
+                     , MonadIO m, MonadMask m)
+                     => CreateProcess
+                     -> (StreamProcess stdin stdout stderr -> m r) -> m r
+withStreamProcess cp f = do
   (stdin, stdout, stderr, sph) <- streamingProcess cp
   r <- f (StreamProcess stdin stdout stderr)
          `onException` terminateStreamingProcess sph
@@ -100,13 +100,13 @@ withStreamingProcess cp f = do
     ExitSuccess   -> return r
     ExitFailure _ -> throwM (ProcessExitedUnsuccessfully cp ec)
 
--- | A variant of 'withStreamingProcess' that runs the provided
+-- | A variant of 'withStreamProcess' that runs the provided
 --   command in a shell.
-withStreamingCommand :: (InputSource stdin, OutputSink stdout, OutputSink stderr
-                        , MonadIO m, MonadMask m)
-                        => String
-                        -> (StreamProcess stdin stdout stderr -> m r) -> m r
-withStreamingCommand = withStreamingProcess . shell
+withStreamCommand :: (InputSource stdin, OutputSink stdout, OutputSink stderr
+                     , MonadIO m, MonadMask m)
+                     => String
+                     -> (StreamProcess stdin stdout stderr -> m r) -> m r
+withStreamCommand = withStreamProcess . shell
 
 terminateStreamingProcess :: (MonadIO m) => StreamingProcessHandle -> m ()
 terminateStreamingProcess = liftIO . terminateProcess . streamingProcessHandleRaw
