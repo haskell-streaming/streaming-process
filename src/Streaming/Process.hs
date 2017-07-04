@@ -76,7 +76,7 @@ import System.Process                  (CreateProcess(..),
 --   continuation can be different from the final result, as it's up
 --   to the caller to make sure the result is reached.
 withStreamingProcess :: (MonadBaseControl IO m, MonadIO m, MonadMask m
-                        , MonadBaseControl IO n)
+                        , MonadBase IO n)
                         => CreateProcess -> ByteString m v
                         -> (StdOutErr n () -> m r) -> m r
 withStreamingProcess cp inp = withStreamProcess cp
@@ -85,7 +85,7 @@ withStreamingProcess cp inp = withStreamProcess cp
 -- | As with 'withStreamingProcess', but run the specified command in
 --   a shell.
 withStreamingCommand :: (MonadBaseControl IO m, MonadIO m, MonadMask m
-                        , MonadBaseControl IO n)
+                        , MonadBase IO n)
                         => String -> ByteString m v
                         -> (StdOutErr n () -> m r) -> m r
 withStreamingCommand = withStreamingProcess . shell
@@ -122,7 +122,7 @@ withStreamingOutputCommand = withStreamingOutput . shell
 --   Note that the monad used in the 'StdOutErr' argument to the
 --   continuation can be different from the final result, as it's up
 --   to the caller to make sure the result is reached.
-withProcessHandles :: (MonadBaseControl IO m, MonadIO m, MonadMask m, MonadBaseControl IO n)
+withProcessHandles :: (MonadBaseControl IO m, MonadIO m, MonadMask m, MonadBase IO n)
                       => ByteString m v
                       -> StreamProcess (SupplyStream m v)
                                        (WithStream m m r)
