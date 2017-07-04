@@ -11,6 +11,13 @@
    use with the 'Withable' class, found in the @streaming-with@
    package.
 
+   __WARNING:__ If using this module, you will need to have
+   @ghc-options -threaded@ in your @.cabal@ file otherwise it will
+   likely hang!
+
+   These functions will all throw 'ProcessExitedUnsuccessfully' if the
+   process\/command itself fails.
+
  -}
 module Streaming.Process.Lifted
   ( -- * High level functions
