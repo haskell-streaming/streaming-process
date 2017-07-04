@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleContexts, NamedFieldPuns, RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts, MultiParamTypeClasses, NamedFieldPuns,
+             RecordWildCards #-}
 
 {- |
    Module      : Streaming.Process
@@ -47,11 +48,11 @@ module Streaming.Process
   , concurrently
   ) where
 
-import           Data.ByteString.Streaming          (ByteString)
-import qualified Data.ByteString.Streaming          as SB
-import           Streaming                          (hoist)
-import           Streaming.Concurrent               (mergeStreams, unbounded)
-import qualified Streaming.Prelude                  as S
+import           Data.ByteString.Streaming (ByteString)
+import qualified Data.ByteString.Streaming as SB
+import           Streaming                 (hoist)
+import           Streaming.Concurrent      (mergeStreams, unbounded)
+import qualified Streaming.Prelude         as S
 
 import Control.Concurrent.Async.Lifted (concurrently)
 import Control.Monad.Base              (MonadBase)
