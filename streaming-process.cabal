@@ -14,14 +14,14 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Streaming.Process
-  build-depends:       base >=4.9 && <4.10
-                     , exceptions
-                     , lifted-async
-                     , monad-control
-                     , process
-                     , streaming
-                     , streaming-bytestring
-                     , streaming-commons
+  build-depends:       base == 4.*
+                     , exceptions >= 0.6 && < 0.9
+                     , lifted-async >= 0.9.1 && < 0.10
+                     , monad-control == 1.*
+                     , process >= 1.2.0.0 && < 1.7
+                     , streaming >= 0.1.4.0 && < 0.2
+                     , streaming-bytestring >= 0.1.4.5 && < 0.2
+                     , streaming-commons >= 0.1.16 && < 0.2
                      , streaming-concurrency == 0.1.*
                      , streaming-with == 0.1.*
                      , transformers
