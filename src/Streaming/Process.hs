@@ -40,8 +40,6 @@ module Streaming.Process
     -- * Interleaved stdout and stderr
   , StdOutErr
   , getStreamingOutputsN
-    -- * Extra functions
-  , withStreamingFile
     -- * Re-exports
   , module Data.Streaming.Process
   , IOMode(..)
@@ -246,10 +244,3 @@ getStreamingOutputsN n StreamProcess{fromStdout, fromStderr} =
                 if B.null b
                    then return ()
                    else S.yield (f b) >> go
-
---------------------------------------------------------------------------------
--- Auxiliary
-
--- | A lifted variant of 'System.IO.withBinaryFile'.
-withStreamingFile :: (MonadMask m, MonadIO m) => FilePath -> IOMode -> (Handle -> m r) -> m r
-withStreamingFile fp md = bracket (liftIO (openBinaryFile fp md)) (liftIO . hClose)
