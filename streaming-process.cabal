@@ -14,6 +14,7 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Streaming.Process
+                     , Streaming.Process.Lifted
   build-depends:       base == 4.*
                      , exceptions >= 0.6 && < 0.9
                      , lifted-async >= 0.9.1 && < 0.10
