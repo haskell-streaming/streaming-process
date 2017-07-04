@@ -38,7 +38,6 @@ test-suite simple-processes
                      , base
                      , bytestring
                      , hspec == 2.4.*
-                     , mmorph
                      , QuickCheck == 2.*
                      , quickcheck-instances
                      , streaming

@@ -24,8 +24,6 @@ import Test.Hspec.QuickCheck     (prop)
 import Test.QuickCheck           (Property, ioProperty)
 import Test.QuickCheck.Instances ()
 
-import Control.Monad.Morph (hoist)
-
 --------------------------------------------------------------------------------
 
 main :: IO ()
