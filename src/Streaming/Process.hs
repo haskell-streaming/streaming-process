@@ -125,7 +125,7 @@ withStreamingOutputCommand = withStreamingOutput . shell
 --   to the caller to make sure the result is reached.
 withProcessHandles :: (MonadBaseControl IO m, MonadIO m, MonadMask m, MonadBase IO n)
                       => ByteString m v
-                      -> StreamProcess (SupplyStream m v)
+                      -> StreamProcess (SupplyStream m)
                                        (WithStream' m)
                                        (WithStream' m)
                       -> (StdOutErr n () -> m r) -> m r
@@ -138,7 +138,7 @@ withProcessHandles inp sp@StreamProcess{..} f =
 
 -- | Stream input into a process, ignoring any output.
 processInput :: (MonadIO m, MonadMask m)
-                => StreamProcess (SupplyStream m r) ClosedStream ClosedStream
+                => StreamProcess (SupplyStream m) ClosedStream ClosedStream
                 -> ByteString m r -> m r
 processInput StreamProcess{toStdin} = supplyStream toStdin
 
@@ -227,9 +227,9 @@ withStreamOutputs StreamProcess{fromStdout, fromStderr} f =
 --------------------------------------------------------------------------------
 
 -- | A wrapper for being able to provide a stream of bytes.
-newtype SupplyStream m r = SupplyStream { supplyStream :: ByteString m r -> m r }
+newtype SupplyStream m = SupplyStream { supplyStream :: forall r. ByteString m r -> m r }
 
-instance (MonadMask m, MonadIO m) => InputSource (SupplyStream m r) where
+instance (MonadMask m, MonadIO m) => InputSource (SupplyStream m) where
   isStdStream = (\(Just h) -> return (SupplyStream $ \inp ->
                                        SB.hPut h inp `finally` liftIO (hClose h))
                 , Just CreatePipe
