@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, MultiParamTypeClasses, NamedFieldPuns,
-             RecordWildCards #-}
+             RankNTypes, RecordWildCards #-}
 
 {- |
    Module      : Streaming.Process
@@ -126,8 +126,8 @@ withStreamingOutputCommand = withStreamingOutput . shell
 withProcessHandles :: (MonadBaseControl IO m, MonadIO m, MonadMask m, MonadBase IO n)
                       => ByteString m v
                       -> StreamProcess (SupplyStream m v)
-                                       (WithStream' m r)
-                                       (WithStream' m r)
+                                       (WithStream' m)
+                                       (WithStream' m)
                       -> (StdOutErr n () -> m r) -> m r
 withProcessHandles inp sp@StreamProcess{..} f =
   snd <$> concurrently withIn withOutErr
@@ -144,7 +144,7 @@ processInput StreamProcess{toStdin} = supplyStream toStdin
 
 -- | Read the output from a process, ignoring stdin and stderr.
 withProcessOutput :: (MonadIO n, MonadIO m, MonadMask m)
-                     => StreamProcess ClosedStream (WithStream n m r) ClosedStream
+                     => StreamProcess ClosedStream (WithStream n m) ClosedStream
                      -> (ByteString n () -> m r) -> m r
 withProcessOutput StreamProcess{fromStdout} = withStream fromStdout
 
@@ -213,7 +213,7 @@ type StdOutErr m r = ByteString (ByteString m) r
 -- | Get both stdout and stderr concurrently.
 withStreamOutputs :: ( MonadMask m, MonadIO m, MonadBaseControl IO m
                      , MonadBase IO n)
-                     => StreamProcess stdin (WithStream' m r) (WithStream' m r)
+                     => StreamProcess stdin (WithStream' m) (WithStream' m)
                      -> (StdOutErr n () -> m r) -> m r
 withStreamOutputs StreamProcess{fromStdout, fromStderr} f =
   withStream fromStdout $ \stdout ->
@@ -237,12 +237,12 @@ instance (MonadMask m, MonadIO m) => InputSource (SupplyStream m r) where
 
 -- | A wrapper for something taking a continuation with a stream of
 --   bytes as input.
-newtype WithStream n m r = WithStream { withStream :: (ByteString n () -> m r) -> m r }
+newtype WithStream n m = WithStream { withStream :: forall r. (ByteString n () -> m r) -> m r }
 
 -- | An alias for the common case of @n ~ m@.
-type WithStream' m r = WithStream m m r
+type WithStream' m = WithStream m m
 
-instance (MonadIO m, MonadMask m, MonadIO n) => OutputSink (WithStream n m r) where
+instance (MonadIO m, MonadMask m, MonadIO n) => OutputSink (WithStream n m) where
   osStdStream = (\(Just h) -> return (WithStream $ \f ->
                                        f (SB.hGetContents h) `finally` liftIO (hClose h))
                 , Just CreatePipe
