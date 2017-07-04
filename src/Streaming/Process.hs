@@ -42,7 +42,9 @@ module Streaming.Process
   , StdOutErr
   , withStreamOutputs
     -- * Re-exports
+    -- $reexports
   , module Data.Streaming.Process
+  , concurrently
   ) where
 
 import           Data.ByteString.Streaming          (ByteString)
@@ -51,7 +53,7 @@ import           Streaming                          (hoist)
 import           Streaming.Concurrent               (mergeStreams, unbounded)
 import qualified Streaming.Prelude                  as S
 
-import Control.Concurrent.Async.Lifted (Concurrently(..))
+import Control.Concurrent.Async.Lifted (concurrently)
 import Control.Monad.Base              (MonadBase)
 import Control.Monad.Catch             (MonadMask, finally, onException, throwM)
 import Control.Monad.IO.Class          (MonadIO, liftIO)
@@ -126,8 +128,7 @@ withProcessHandles :: (MonadBaseControl IO m, MonadIO m, MonadMask m, MonadBaseC
                                        (WithStream m m r)
                       -> (StdOutErr n () -> m r) -> m r
 withProcessHandles inp sp@StreamProcess{..} f =
-  runConcurrently (flip const <$> Concurrently withIn
-                              <*> Concurrently withOutErr)
+  snd <$> concurrently withIn withOutErr
   where
     withIn = supplyStream toStdin inp
 
@@ -241,3 +242,14 @@ instance (MonadIO m, MonadMask m, MonadIO n) => OutputSink (WithStream n m r) wh
                                        f (SB.hGetContents h) `finally` liftIO (hClose h))
                 , Just CreatePipe
                 )
+
+--------------------------------------------------------------------------------
+
+{- $reexports
+
+All of "Data.Streaming.Process" is available for you to use.
+
+The 'concurrently' function will probably be useful if manually
+handling process inputs and outputs.
+
+-}
