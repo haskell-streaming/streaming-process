@@ -1,5 +1,4 @@
-{-# LANGUAGE BangPatterns, FlexibleContexts, MultiParamTypeClasses,
-             NamedFieldPuns, OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts, NamedFieldPuns, RecordWildCards #-}
 
 {- |
    Module      : Streaming.Process
@@ -31,6 +30,8 @@ module Streaming.Process
   , withStreamingOutputCommand
     -- * Lower level
   , StreamProcess(..)
+  , WithStream(..)
+  , SupplyStream(..)
   , switchOutputs
   , withStreamProcess
   , withStreamCommand
@@ -39,32 +40,28 @@ module Streaming.Process
   , withProcessOutput
     -- * Interleaved stdout and stderr
   , StdOutErr
-  , getStreamingOutputsN
+  , withStreamOutputs
     -- * Re-exports
   , module Data.Streaming.Process
-  , IOMode(..)
   ) where
 
-import qualified Data.ByteString                    as B
 import           Data.ByteString.Streaming          (ByteString)
 import qualified Data.ByteString.Streaming          as SB
-import           Data.ByteString.Streaming.Internal (defaultChunkSize)
 import           Streaming                          (hoist)
+import           Streaming.Concurrent               (mergeStreams, unbounded)
 import qualified Streaming.Prelude                  as S
 
-import Control.Concurrent.Async.Lifted (Concurrently(..), async,
-                                        waitEitherCancel)
-import Control.Monad.Base              (liftBase)
-import Control.Monad.Catch             (MonadMask, bracket, finally,
-                                        onException, throwM)
+import Control.Concurrent.Async.Lifted (Concurrently(..))
+import Control.Monad.Base              (MonadBase)
+import Control.Monad.Catch             (MonadMask, finally, onException, throwM)
 import Control.Monad.IO.Class          (MonadIO, liftIO)
-import Control.Monad.Trans.Class       (lift)
 import Control.Monad.Trans.Control     (MonadBaseControl)
 import Data.Streaming.Process
+import Data.Streaming.Process.Internal (InputSource(..), OutputSink(..))
 import System.Exit                     (ExitCode(..))
-import System.IO                       (Handle, IOMode(..), hClose,
-                                        openBinaryFile)
-import System.Process                  (CreateProcess(..), shell)
+import System.IO                       (hClose)
+import System.Process                  (CreateProcess(..),
+                                        StdStream(CreatePipe), shell)
 
 --------------------------------------------------------------------------------
 
@@ -123,32 +120,30 @@ withStreamingOutputCommand = withStreamingOutput . shell
 --   continuation can be different from the final result, as it's up
 --   to the caller to make sure the result is reached.
 withProcessHandles :: (MonadBaseControl IO m, MonadIO m, MonadMask m, MonadBaseControl IO n)
-                      => ByteString m v -> StreamProcess Handle Handle Handle
+                      => ByteString m v
+                      -> StreamProcess (SupplyStream m v)
+                                       (WithStream m m r)
+                                       (WithStream m m r)
                       -> (StdOutErr n () -> m r) -> m r
 withProcessHandles inp sp@StreamProcess{..} f =
   runConcurrently (flip const <$> Concurrently withIn
                               <*> Concurrently withOutErr)
-  `finally` liftIO closeOutErr
   where
-    withIn = SB.hPut toStdin inp `finally` liftIO (hClose toStdin)
+    withIn = supplyStream toStdin inp
 
-    withOutErr = f (getStreamingOutputsN defaultChunkSize sp)
-
-    closeOutErr = hClose fromStdout >> hClose fromStderr
+    withOutErr = withStreamOutputs sp f
 
 -- | Stream input into a process, ignoring any output.
 processInput :: (MonadIO m, MonadMask m)
-                => StreamProcess Handle ClosedStream ClosedStream
+                => StreamProcess (SupplyStream m r) ClosedStream ClosedStream
                 -> ByteString m r -> m r
-processInput StreamProcess{toStdin} inp =
-  SB.hPut toStdin inp `finally` liftIO (hClose toStdin)
+processInput StreamProcess{toStdin} = supplyStream toStdin
 
 -- | Read the output from a process, ignoring stdin and stderr.
 withProcessOutput :: (MonadIO n, MonadIO m, MonadMask m)
-                     => StreamProcess ClosedStream Handle ClosedStream
+                     => StreamProcess ClosedStream (WithStream n m r) ClosedStream
                      -> (ByteString n () -> m r) -> m r
-withProcessOutput StreamProcess{fromStdout} f =
-  f (SB.hGet fromStdout defaultChunkSize) `finally` liftIO (hClose fromStdout)
+withProcessOutput StreamProcess{fromStdout} = withStream fromStdout
 
 --------------------------------------------------------------------------------
 
@@ -213,34 +208,36 @@ terminateStreamingProcess = liftIO . terminateProcess . streamingProcessHandleRa
 type StdOutErr m r = ByteString (ByteString m) r
 
 -- | Get both stdout and stderr concurrently.
---
---   Chunks are guaranteed to be no larger than the size specified,
---   but may be smaller to improve responsiveness and avoid blocking.
-getStreamingOutputsN :: (MonadBaseControl IO m) => Int
-                        -> StreamProcess stdin Handle Handle
-                        -> StdOutErr m ()
-getStreamingOutputsN n _ | n <= 0 = return ()
-getStreamingOutputsN n StreamProcess{fromStdout, fromStderr} =
-  SB.fromChunks . hoist SB.fromChunks . S.partitionEithers $ loopBoth
+withStreamOutputs :: ( MonadMask m, MonadIO m, MonadBaseControl IO m
+                     , MonadBase IO n)
+                     => StreamProcess stdin (WithStream m m r) (WithStream m m r)
+                     -> (StdOutErr n () -> m r) -> m r
+withStreamOutputs StreamProcess{fromStdout, fromStderr} f =
+  withStream fromStdout $ \stdout ->
+    withStream fromStderr $ \stderr ->
+      let getOut = S.map Left  . SB.toChunks $ stdout
+          getErr = S.map Right . SB.toChunks $ stderr
+      in mergeStreams unbounded [getOut, getErr] (f . mrg)
   where
-    -- Will block until /something/ is available; may have length < n
-    getOut = liftBase (B.hGetSome fromStdout n)
-    getErr = liftBase (B.hGetSome fromStderr n)
+    mrg = SB.fromChunks . hoist SB.fromChunks . S.partitionEithers
 
-    loopBoth = do !res <- lift (do getOutA <- async getOut
-                                   getErrA <- async getErr
-                                   waitEitherCancel getOutA getErrA)
-                  -- As soon as either one
-                  -- returns empty, then
-                  -- focus on the other.
-                  case res of
-                    Left  "" -> loopWith Right getErr
-                    Right "" -> loopWith Left  getOut
-                    _        -> S.yield res >> loopBoth
+--------------------------------------------------------------------------------
 
-    loopWith f get = go
-      where
-        go = do b <- lift get
-                if B.null b
-                   then return ()
-                   else S.yield (f b) >> go
+-- | A wrapper for being able to provide a stream of bytes.
+newtype SupplyStream m r = SupplyStream { supplyStream :: ByteString m r -> m r }
+
+instance (MonadMask m, MonadIO m) => InputSource (SupplyStream m r) where
+  isStdStream = (\(Just h) -> return (SupplyStream $ \inp ->
+                                       SB.hPut h inp `finally` liftIO (hClose h))
+                , Just CreatePipe
+                )
+
+-- | A wrapper for something taking a continuation with a stream of
+--   bytes as input.
+newtype WithStream n m r = WithStream { withStream :: (ByteString n () -> m r) -> m r }
+
+instance (MonadIO m, MonadMask m, MonadIO n) => OutputSink (WithStream n m r) where
+  osStdStream = (\(Just h) -> return (WithStream $ \f ->
+                                       f (SB.hGetContents h) `finally` liftIO (hClose h))
+                , Just CreatePipe
+                )

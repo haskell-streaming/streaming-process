@@ -14,18 +14,14 @@ module Main (main) where
 
 import Streaming.Process
 
-import qualified Data.ByteString.Lazy            as LB
-import           Data.ByteString.Streaming       (ByteString)
-import qualified Data.ByteString.Streaming       as B
-import qualified Data.ByteString.Streaming.Char8 as CB
-import           Streaming                       (Of(..))
-import qualified Streaming                       as S
-import qualified Streaming.Prelude               as S
+import qualified Data.ByteString.Lazy      as LB
+import           Data.ByteString.Streaming (ByteString)
+import qualified Data.ByteString.Streaming as B
+import           Streaming                 (Of(..))
 
 import Test.Hspec                (describe, hspec)
 import Test.Hspec.QuickCheck     (prop)
-import Test.QuickCheck           (Arbitrary(..), Positive(..), Property,
-                                  ioProperty)
+import Test.QuickCheck           (Property, ioProperty)
 import Test.QuickCheck.Instances ()
 
 import Control.Monad.Morph (hoist)
@@ -33,7 +29,7 @@ import Control.Monad.Morph (hoist)
 --------------------------------------------------------------------------------
 
 main :: IO ()
-main = hspec $ do
+main = hspec $
   describe "cat" $ do
     prop "stdout only" prop_cat
     prop "stdout and stderr" prop_catBoth
@@ -51,19 +47,6 @@ prop_catBoth bs = ioProperty $
     fmap (uncurry' ((&&) . isSame))
     . B.toLazy
     . fmap isSame
-    . B.toLazy_
-  where
-    isSame = (bs==)
-
-test :: LB.ByteString -> IO Bool
-test bs =
-  withStreamingCommand "ghc -e \"getContents >>= \\inp -> putStr inp >> System.IO.hPutStr System.IO.stderr inp\"" (B.fromLazy bs) $
---    CB.putStrLn . CB.putStrLn
-    fmap (uncurry' ((&&) . isSame))
-    . (>>= (\v -> print v >> return v))
-    . B.toLazy
-    . fmap isSame
-    . (>>= (\v -> S.liftIO (print v) >> return v))
     . B.toLazy_
   where
     isSame = (bs==)
