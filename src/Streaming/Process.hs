@@ -31,10 +31,10 @@ module Streaming.Process
   , withStreamingOutputCommand
     -- * Lower level
   , StreamProcess(..)
+  , switchOutputs
   , WithStream(..)
   , WithStream'
   , SupplyStream(..)
-  , switchOutputs
   , withStreamProcess
   , withStreamCommand
   , withProcessHandles
