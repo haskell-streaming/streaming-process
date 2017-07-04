@@ -32,6 +32,7 @@ module Streaming.Process
     -- * Lower level
   , StreamProcess(..)
   , WithStream(..)
+  , WithStream'
   , SupplyStream(..)
   , switchOutputs
   , withStreamProcess
@@ -125,8 +126,8 @@ withStreamingOutputCommand = withStreamingOutput . shell
 withProcessHandles :: (MonadBaseControl IO m, MonadIO m, MonadMask m, MonadBase IO n)
                       => ByteString m v
                       -> StreamProcess (SupplyStream m v)
-                                       (WithStream m m r)
-                                       (WithStream m m r)
+                                       (WithStream' m r)
+                                       (WithStream' m r)
                       -> (StdOutErr n () -> m r) -> m r
 withProcessHandles inp sp@StreamProcess{..} f =
   snd <$> concurrently withIn withOutErr
@@ -212,7 +213,7 @@ type StdOutErr m r = ByteString (ByteString m) r
 -- | Get both stdout and stderr concurrently.
 withStreamOutputs :: ( MonadMask m, MonadIO m, MonadBaseControl IO m
                      , MonadBase IO n)
-                     => StreamProcess stdin (WithStream m m r) (WithStream m m r)
+                     => StreamProcess stdin (WithStream' m r) (WithStream' m r)
                      -> (StdOutErr n () -> m r) -> m r
 withStreamOutputs StreamProcess{fromStdout, fromStderr} f =
   withStream fromStdout $ \stdout ->
@@ -237,6 +238,9 @@ instance (MonadMask m, MonadIO m) => InputSource (SupplyStream m r) where
 -- | A wrapper for something taking a continuation with a stream of
 --   bytes as input.
 newtype WithStream n m r = WithStream { withStream :: (ByteString n () -> m r) -> m r }
+
+-- | An alias for the common case of @n ~ m@.
+type WithStream' m r = WithStream m m r
 
 instance (MonadIO m, MonadMask m, MonadIO n) => OutputSink (WithStream n m r) where
   osStdStream = (\(Just h) -> return (WithStream $ \f ->
