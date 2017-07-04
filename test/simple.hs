@@ -52,7 +52,8 @@ prop_catBoth bs = ioProperty $
     isSame = (bs==)
 
 noStdErr :: String -> ByteString IO r -> (ByteString IO () -> IO v) -> IO v
-noStdErr cmd inp f = withStreamingCommand cmd inp (f . hoist B.effects)
+noStdErr cmd inp f = withStreamCommand cmd $ \(StreamProcess stdin stdout ClosedStream) ->
+  snd <$> concurrently (supplyStream stdin inp) (withStream stdout f)
 
 uncurry' :: (a -> b -> c) -> Of a b -> c
 uncurry' f (a :> b) = f a b
