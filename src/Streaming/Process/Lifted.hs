@@ -30,10 +30,10 @@ module Streaming.Process.Lifted
     -- * Lower level
   , StreamProcess(..)
   , switchOutputs
-  , WithStream
+  , WithStream(WithStream)
   , WithStream'
   , withStream
-  , SupplyStream
+  , SupplyStream(SupplyStream)
   , supplyStream
   , withStreamProcess
   , withStreamCommand
@@ -49,8 +49,10 @@ module Streaming.Process.Lifted
   , concurrently
   ) where
 
-import           Streaming.Process (StdOutErr, StreamProcess(..), SupplyStream,
-                                    WithStream, WithStream', switchOutputs)
+import           Streaming.Process (StdOutErr, StreamProcess(..),
+                                    SupplyStream(SupplyStream),
+                                    WithStream(WithStream), WithStream',
+                                    switchOutputs)
 import qualified Streaming.Process as SP
 
 import Data.ByteString.Streaming (ByteString)
@@ -172,10 +174,14 @@ withStreamOutputs sp = liftWith (SP.withStreamOutputs sp)
 
 --------------------------------------------------------------------------------
 
+-- | Please note that - unlike the version in "Streaming.Process" -
+--   this is /not/ a record selector.
 supplyStream :: (Withable w) => SupplyStream (WithMonad w)
                 -> ByteString (WithMonad w) r -> w r
 supplyStream ss inp = liftAction (SP.supplyStream ss inp)
 
+-- | Please note that - unlike the version in "Streaming.Process" -
+--   this is /not/ a record selector.
 withStream :: (Withable w) => WithStream n (WithMonad w) -> w (ByteString n ())
 withStream ws = liftWith (SP.withStream ws)
 
