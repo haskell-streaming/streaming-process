@@ -54,7 +54,7 @@ module Streaming.Process
 import           Data.ByteString.Streaming (ByteString)
 import qualified Data.ByteString.Streaming as SB
 import           Streaming                 (hoist)
-import           Streaming.Concurrent      (mergeStreams, unbounded)
+import           Streaming.Concurrent      (unbounded, withMergedStreams)
 import qualified Streaming.Prelude         as S
 
 import Control.Concurrent.Async.Lifted (concurrently)
@@ -222,7 +222,7 @@ withStreamOutputs StreamProcess{fromStdout, fromStderr} f =
     withStream fromStderr $ \stderr ->
       let getOut = S.map Left  . SB.toChunks $ stdout
           getErr = S.map Right . SB.toChunks $ stderr
-      in mergeStreams unbounded [getOut, getErr] (f . mrg)
+      in withMergedStreams unbounded [getOut, getErr] (f . mrg)
   where
     mrg = SB.fromChunks . hoist SB.fromChunks . S.partitionEithers
 

@@ -30,7 +30,7 @@ library
                      , streaming >= 0.1.4.0 && < 0.2
                      , streaming-bytestring >= 0.1.4.5 && < 0.2
                      , streaming-commons >= 0.1.16 && < 0.2
-                     , streaming-concurrency == 0.1.*
+                     , streaming-concurrency == 0.3.*
                      , streaming-with == 0.1.*
                      , transformers
                      , transformers-base
