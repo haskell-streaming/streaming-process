@@ -23,6 +23,7 @@ library
   exposed-modules:     Streaming.Process
                      , Streaming.Process.Lifted
   build-depends:       base == 4.*
+                     , bytestring
                      , exceptions >= 0.6 && < 0.9
                      , lifted-async >= 0.9.1 && < 0.10
                      , monad-control == 1.*
@@ -31,7 +32,7 @@ library
                      , streaming-bytestring >= 0.1.4.5 && < 0.2
                      , streaming-commons >= 0.1.16 && < 0.2
                      , streaming-concurrency == 0.3.*
-                     , streaming-with == 0.1.*
+                     , streaming-with == 0.2.*
                      , transformers
                      , transformers-base
   hs-source-dirs:      src
