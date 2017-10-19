@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts, MultiParamTypeClasses #-}
+
 {- |
    Module      : Streaming.Process.GPG
    Description : Example library usage by wrapping up GPG
@@ -19,14 +21,25 @@ import Streaming.Process.Lifted
 
 import Streaming.With.Lifted
 
-import qualified Data.ByteString as B
-import           Data.Maybe      (fromMaybe)
-import           System.Process  (CreateProcess, proc)
+import           Control.Monad.Base          (MonadBase)
+import           Control.Monad.Catch         (throwM)
+import           Control.Monad.IO.Class      (liftIO)
+import           Control.Monad.Trans.Control (MonadBaseControl)
+import qualified Data.ByteString             as B
+import           Data.ByteString.Streaming   (ByteString)
+import qualified Data.ByteString.Streaming   as SB
+import           Data.Maybe                  (fromMaybe)
+import           System.Exit                 (ExitCode(..))
+import           System.IO                   (hClose)
+import           System.Process              (CreateProcess, proc)
 
 --------------------------------------------------------------------------------
 
 -- | The representation of specifying command-line arguments to GPG.
-type GPGArgs = Args -> CreateProcess
+data GPGArgs hd = GPGArgs
+  { argFunc :: !(Args -> CreateProcess)
+  , homeDir :: !hd
+  }
 
 type Args = [String]
 
@@ -35,15 +48,61 @@ withGPG :: (Withable w)
               -- ^ The path to the executable to use.  If not
               --   specified, will try and find a command called @gpg2@
               --   on the path.
-           -> w GPGArgs
-withGPG mPath = liftWith ($ proc (fromMaybe "gpg2" mPath))
+           -> w (GPGArgs ())
+withGPG mPath = return (GPGArgs (proc (fromMaybe "gpg2" mPath)) ())
 
-withArgs :: (Withable w) => (Args -> Args) -> GPGArgs -> w GPGArgs
-withArgs argFunc ga = liftWith ($ (ga . argFunc))
+runGPGWith :: Args -> GPGArgs hd -> CreateProcess
+runGPGWith args = ($args) . argFunc
 
-withHomeDirectory :: (Withable w) => FilePath -> GPGArgs -> w GPGArgs
-withHomeDirectory dir = withArgs (["--homedir", dir] ++)
+runGPG :: GPGArgs hd -> CreateProcess
+runGPG = runGPGWith []
 
-withTemporaryHomeDirectory :: (Withable w) => GPGArgs -> w GPGArgs
-withTemporaryHomeDirectory args =
-  withSystemTempDirectory "streaming-process-gpg." >>= flip withHomeDirectory args
+withArgs :: (Withable w) => (Args -> Args) -> GPGArgs hd -> w (GPGArgs hd)
+withArgs f ga = liftAction (return (ga { argFunc = argFunc ga . f}))
+
+-- | 'Nothing' means \"use temporary directory\".
+setHomeDirectory :: (Withable w) => Maybe FilePath -> GPGArgs hd -> w (GPGArgs FilePath)
+setHomeDirectory mdir ga = do
+  dir <- maybe (withSystemTempDirectory "streaming-process-gpg.") return mdir
+  return (ga { argFunc = argFunc ga . (["--homedir", dir] ++)
+             , homeDir = dir
+             })
+
+data Key m = KeyFile !FilePath
+           | KeyRaw  !(ByteString m ())
+
+newtype KeyFile = KF { getKey :: FilePath }
+  deriving (Eq, Show, Read)
+
+withKey :: (Withable w) => Key (WithMonad w) -> GPGArgs FilePath -> w KeyFile
+withKey key args = do
+  -- TODO: if a file, does it need to be copied into the specified
+  -- directory?
+  keyCnts <- case key of
+               KeyFile fl -> withBinaryFileContents fl
+               KeyRaw rk  -> return rk
+  fl <- writeCnts keyCnts
+  liftActionIO (importer (runGPGWith ["--import", fl] args))
+  return (KF fl)
+  where
+    -- This is to avoid the extra Handle leaking out
+    writeCnts :: (Withable v) => ByteString (WithMonad v) () -> v FilePath
+    writeCnts bs = do
+      (fl, h) <- withTempFile (homeDir args) "import.key"
+      liftAction (SB.hPut h bs >> liftIO (hClose h))
+      return fl
+
+    importer :: CreateProcess -> IO ()
+    importer cp = withCreateProcess cp $ \_ _ _ ph -> do
+      ec <- waitForProcess ph
+      case ec of
+        ExitSuccess   -> return ()
+        ExitFailure _ -> throwM (ProcessExitedUnsuccessfully cp ec)
+
+data GPGAction = Encrypt | Decrypt
+  deriving (Eq, Ord, Show, Read, Bounded, Enum)
+
+-- gpg :: (Withable w, MonadBaseControl IO (WithMonad w), MonadBase IO n)
+--        => GPGAction -> Key (WithMonad w) -> ByteString (WithMonad w) i
+--        -> w (StdOutErr n ())
+-- gpg = undefined
