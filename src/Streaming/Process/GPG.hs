@@ -19,16 +19,20 @@ module Streaming.Process.GPG where
 
 import Streaming.Process.Lifted
 
-import Streaming.With.Lifted
+import           Data.ByteString.Streaming       (ByteString)
+import qualified Data.ByteString.Streaming.Char8 as SBC
+import qualified Streaming                       as S
+import qualified Streaming.Prelude               as S
+import           Streaming.With.Lifted
 
+import           Control.Monad               (join)
 import           Control.Monad.Base          (MonadBase)
 import           Control.Monad.Catch         (throwM)
 import           Control.Monad.IO.Class      (liftIO)
 import           Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.ByteString             as B
-import           Data.ByteString.Streaming   (ByteString)
-import qualified Data.ByteString.Streaming   as SB
 import           Data.Maybe                  (fromMaybe)
+import           Data.Traversable            (for)
 import           System.Exit                 (ExitCode(..))
 import           System.IO                   (hClose)
 import           System.Process              (CreateProcess, proc)
@@ -99,6 +103,32 @@ withKey key ga = do
         ExitSuccess   -> return ()
         ExitFailure _ -> throwM (ProcessExitedUnsuccessfully cp ec)
 
+newtype KeyID = KeyID { getKeyID :: B.ByteString }
+
+keyID :: (Withable w) => KeyFile -> GPGArgs FilePath -> w (Maybe KeyID)
+keyID kf ga = do
+  -- Unfortunately, we have to rely on gpg "doing the right thing" and
+  -- guessing what we want to do, namely give information about the
+  -- keyfile.
+  let cp = runGPGWith ["--batch", "--with-colons", getKey kf] ga
+  out <- withStreamingOutput cp
+  liftActionIO (parseID out)
+  where
+    parseID :: (Monad m) => ByteString m () -> m (Maybe KeyID)
+    parseID bs = do
+      eln1 <- S.inspect (SBC.lines bs)
+      -- We want the 5th column.
+      case eln1 of
+        Left _    -> return Nothing
+        Right ln1 ->
+          fmap (fmap KeyID)
+          -- We want the 5th column.
+          . S.head_
+          . S.drop 4
+          . S.mapped SBC.toStrict
+          . SBC.split ':'
+          $ ln1
+
 data GPGAction = Encrypt | Decrypt
   deriving (Eq, Ord, Show, Read, Bounded, Enum)
 
@@ -106,3 +136,12 @@ data GPGAction = Encrypt | Decrypt
 --        => GPGAction -> Key (WithMonad w) -> ByteString (WithMonad w) i
 --        -> w (StdOutErr n ())
 -- gpg = undefined
+
+--------------------------------------------------------------------------------
+
+-- Here until the new streaming-with is released
+liftActionIO :: (Withable w) => IO a -> w a
+liftActionIO = liftAction . liftIO
+
+within :: (Withable w) => w a -> (a -> WithMonad w b) -> w b
+within w f = w >>= liftAction . f
