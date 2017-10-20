@@ -75,21 +75,21 @@ newtype KeyFile = KF { getKey :: FilePath }
   deriving (Eq, Show, Read)
 
 withKey :: (Withable w) => Key (WithMonad w) -> GPGArgs FilePath -> w KeyFile
-withKey key args = do
+withKey key ga = do
   -- TODO: if a file, does it need to be copied into the specified
   -- directory?
   keyCnts <- case key of
                KeyFile fl -> withBinaryFileContents fl
                KeyRaw rk  -> return rk
   fl <- writeCnts keyCnts
-  liftActionIO (importer (runGPGWith ["--import", fl] args))
+  liftActionIO (importer (runGPGWith ["--import", fl] ga))
   return (KF fl)
   where
     -- This is to avoid the extra Handle leaking out
     writeCnts :: (Withable v) => ByteString (WithMonad v) () -> v FilePath
     writeCnts bs = do
-      (fl, h) <- withTempFile (homeDir args) "import.key"
-      liftAction (SB.hPut h bs >> liftIO (hClose h))
+      (fl, h) <- withTempFile (homeDir ga) "import.key"
+      liftAction (SBC.hPut h bs >> liftIO (hClose h))
       return fl
 
     importer :: CreateProcess -> IO ()
