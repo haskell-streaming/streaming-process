@@ -79,12 +79,9 @@ newtype KeyFile = KF { getKey :: FilePath }
 
 withKey :: (Withable w) => Key (WithMonad w) -> GPGArgs FilePath -> w KeyFile
 withKey key ga = do
-  -- TODO: if a file, does it need to be copied into the specified
-  -- directory?
-  keyCnts <- case key of
-               KeyFile fl -> withBinaryFileContents fl
-               KeyRaw rk  -> return rk
-  fl <- writeCnts keyCnts
+  fl <- case key of
+          KeyFile fl -> return fl
+          KeyRaw  rk -> writeCnts rk
   liftActionIO (importer (runGPGWith ["--import", fl] ga))
   return (KF fl)
   where
