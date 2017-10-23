@@ -24,6 +24,7 @@ library
                      , Streaming.Process.Lifted
   build-depends:       base == 4.*
                      , bytestring
+                     , directory >= 1.2 && < 1.4
                      , exceptions >= 0.6 && < 0.9
                      , lifted-async >= 0.9.1 && < 0.10
                      , monad-control == 1.*

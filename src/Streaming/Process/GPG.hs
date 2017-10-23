@@ -25,14 +25,15 @@ import qualified Streaming                       as S
 import qualified Streaming.Prelude               as S
 import           Streaming.With.Lifted
 
-import           Control.Monad               (join)
+import           Control.Exception           (Exception(..), mapException)
 import           Control.Monad.Base          (MonadBase)
-import           Control.Monad.Catch         (throwM)
+import           Control.Monad.Catch         (MonadThrow, throwM)
 import           Control.Monad.IO.Class      (liftIO)
 import           Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.ByteString.Char8       as B
 import           Data.Maybe                  (fromMaybe)
-import           Data.Traversable            (for)
+import           Data.Typeable               (Typeable)
+import           System.Directory            (findExecutable)
 import           System.Exit                 (ExitCode(..))
 import           System.IO                   (hClose)
 import           System.Process              (CreateProcess, proc)
@@ -47,12 +48,22 @@ data GPGArgs hd = GPGArgs
 
 type Args = [String]
 
-withGPG :: Maybe FilePath
+withGPG :: (Withable w, MonadThrow (WithMonad w))
+           => Maybe FilePath
               -- ^ The path to the executable to use.  If not
               --   specified, will try and find a command called @gpg2@
               --   on the path.
-           -> GPGArgs ()
-withGPG mPath = GPGArgs (proc (fromMaybe "gpg2" mPath)) ()
+           -> w (GPGArgs ())
+withGPG mPath = do
+  mexe <- liftActionIO (findExecutable path)
+  maybe (liftThrow (CantFindGPG path)) (return . ga) mexe
+  where
+    path = fromMaybe "gpg2" mPath
+
+    ga exe = GPGArgs
+               { argFunc = proc exe . ("--batch":)
+               , homeDir = ()
+               }
 
 runGPGWith :: Args -> GPGArgs hd -> CreateProcess
 runGPGWith args = ($args) . argFunc
@@ -93,7 +104,8 @@ withKey key ga = do
       return fl
 
     importer :: CreateProcess -> IO ()
-    importer cp = withCreateProcess cp $ \_ _ _ ph -> do
+    importer cp = mapException ErrorRunningGPG
+                  . withCreateProcess cp $ \_ _ _ ph -> do
       ec <- waitForProcess ph
       case ec of
         ExitSuccess   -> return ()
@@ -101,23 +113,23 @@ withKey key ga = do
 
 newtype KeyID = KeyID { getKeyID :: B.ByteString }
 
-withKeyID :: (Withable w) => KeyFile -> GPGArgs FilePath -> w (Maybe KeyID)
+withKeyID :: (Withable w) => KeyFile -> GPGArgs FilePath -> w KeyID
 withKeyID kf ga = do
   -- Unfortunately, we have to rely on gpg "doing the right thing" and
   -- guessing what we want to do, namely give information about the
   -- keyfile.
-  let cp = runGPGWith ["--batch", "--with-colons", getKey kf] ga
-  out <- withStreamingOutput cp
+  let cp = runGPGWith ["--with-colons", getKey kf] ga
+  out <- mapException ErrorRunningGPG (withStreamingOutput cp)
   liftActionIO (parseID out)
   where
-    parseID :: (Monad m) => ByteString m () -> m (Maybe KeyID)
+    parseID :: (MonadThrow m) => ByteString m () -> m KeyID
     parseID bs = do
       eln1 <- S.inspect (SBC.lines bs)
       -- We want the 5th column.
       case eln1 of
-        Left _    -> return Nothing
+        Left _    -> throwM (KeyNotFound kf)
         Right ln1 ->
-          fmap (fmap KeyID)
+          (maybe (throwM (KeyNotFound kf)) (return . KeyID) =<<)
           -- We want the 5th column.
           . S.head_
           . S.drop 4
@@ -128,18 +140,18 @@ withKeyID kf ga = do
 encrypt :: (Withable w, MonadBaseControl IO (WithMonad w), MonadBase IO n)
            => GPGArgs FilePath -> KeyID -> ByteString (WithMonad w) r
            -> w (StdOutErr n ())
-encrypt ga key = withStreamingProcess cp
+encrypt ga key = mapException ErrorRunningGPG . withStreamingProcess cp
   where
     -- Key value should be hex
-    cp = runGPGWith ["--batch", "--encrypt", "--recipient", B.unpack (getKeyID key)] ga
+    cp = runGPGWith ["--encrypt", "--recipient", B.unpack (getKeyID key)] ga
 
 decrypt :: (Withable w, MonadBaseControl IO (WithMonad w), MonadBase IO n)
            => GPGArgs FilePath -> ByteString (WithMonad w) r
            -> w (StdOutErr n ())
-decrypt ga = withStreamingProcess cp
+decrypt ga = mapException ErrorRunningGPG .  withStreamingProcess cp
   where
     -- Key value should be hex
-    cp = runGPGWith ["--batch", "--decrypt"] ga
+    cp = runGPGWith ["--decrypt"] ga
 
 data GPGAction = Encrypt | Decrypt
   deriving (Eq, Ord, Show, Read, Bounded, Enum)
@@ -148,15 +160,27 @@ gpg :: (Withable w, MonadBaseControl IO (WithMonad w), MonadBase IO n)
        => GPGAction -> Key (WithMonad w) -> ByteString (WithMonad w) i
        -> w (StdOutErr n ())
 gpg act key inp = do
+  ga0  <- withGPG Nothing
   gahd <- setHomeDirectory Nothing ga0
   kf   <- withKey key gahd
   case act of
     Encrypt -> do
-      Just kid <- withKeyID kf gahd
+      kid <- withKeyID kf gahd
       encrypt gahd kid inp
     Decrypt -> decrypt gahd inp
-  where
-    ga0 = withGPG Nothing
+
+data GPGException
+  = CantFindGPG FilePath
+  | KeyNotFound KeyFile
+  | ErrorRunningGPG ProcessExitedUnsuccessfully
+  deriving (Show, Typeable)
+
+instance Exception GPGException where
+  displayException ex =
+    case ex of
+      CantFindGPG pth     -> "Cannot find expected GPG executable: " ++ pth
+      KeyNotFound kf      -> "Cannot find the identifier for the specified KeyFile: " ++ getKey kf
+      ErrorRunningGPG peu -> "Error running gpg:\n" ++ displayException peu
 
 --------------------------------------------------------------------------------
 
@@ -166,3 +190,6 @@ liftActionIO = liftAction . liftIO
 
 within :: (Withable w) => w a -> (a -> WithMonad w b) -> w b
 within w f = w >>= liftAction . f
+
+liftThrow :: (Withable w, Exception e) => e -> w a
+liftThrow = liftAction . throwM
