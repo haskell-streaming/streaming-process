@@ -169,6 +169,20 @@ gpg act key inp = do
       encrypt gahd kid inp
     Decrypt -> decrypt gahd inp
 
+generate4096RSAKey :: (Withable w) => FilePath -> w ()
+generate4096RSAKey fp = do
+  ga0 <- withGPG Nothing
+  gahd <- setHomeDirectory Nothing ga0
+  return ()
+  where
+    params = unlines
+      [ "Key-Type: RSA"
+      , "Key-Length: 4096"
+      , "Key-Usage: encrypt"
+      , "%no-ask-passphrase"
+      , "Expire-Date: 0"
+      ]
+
 data GPGException
   = CantFindGPG FilePath
   | KeyNotFound KeyFile
@@ -181,15 +195,3 @@ instance Exception GPGException where
       CantFindGPG pth     -> "Cannot find expected GPG executable: " ++ pth
       KeyNotFound kf      -> "Cannot find the identifier for the specified KeyFile: " ++ getKey kf
       ErrorRunningGPG peu -> "Error running gpg:\n" ++ displayException peu
-
---------------------------------------------------------------------------------
-
--- Here until the new streaming-with is released
-liftActionIO :: (Withable w) => IO a -> w a
-liftActionIO = liftAction . liftIO
-
-within :: (Withable w) => w a -> (a -> WithMonad w b) -> w b
-within w f = w >>= liftAction . f
-
-liftThrow :: (Withable w, Exception e) => e -> w a
-liftThrow = liftAction . throwM
