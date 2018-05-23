@@ -26,13 +26,13 @@ library
   build-depends:       base == 4.*
                      , bytestring
                      , directory >= 1.2 && < 1.4
-                     , exceptions >= 0.6 && < 0.9
-                     , lifted-async >= 0.9.1 && < 0.10
+                     , exceptions >= 0.6 && < 0.11
+                     , lifted-async >= 0.9.1 && < 0.11
                      , monad-control == 1.*
                      , process >= 1.2.0.0 && < 1.7
-                     , streaming >= 0.1.4.0 && < 0.2
+                     , streaming >= 0.1.4.0 && < 0.3
                      , streaming-bytestring >= 0.1.4.5 && < 0.2
-                     , streaming-commons >= 0.1.16 && < 0.2
+                     , streaming-commons >= 0.1.16 && < 0.3
                      , streaming-concurrency == 0.3.*
                      , streaming-with == 0.2.*
                      , transformers
