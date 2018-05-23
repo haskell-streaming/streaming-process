@@ -1,5 +1,5 @@
 name:                streaming-process
-version:             0.1.0
+version:             0.1.0.0
 synopsis:            Streaming support for running system process
 description:
   Stream data in and out of external commands.  Configuration options
