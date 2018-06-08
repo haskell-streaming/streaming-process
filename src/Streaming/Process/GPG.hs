@@ -61,7 +61,7 @@ withGPG mPath = do
     path = fromMaybe "gpg2" mPath
 
     ga exe = GPGArgs
-               { argFunc = proc exe . ("--batch":)
+               { argFunc = proc exe . ("--batch":) . ("--no-autostart":)
                , homeDir = ()
                }
 
@@ -160,7 +160,7 @@ gpg :: (Withable w, MonadBaseControl IO (WithMonad w), MonadBase IO n)
        => GPGAction -> Key (WithMonad w) -> ByteString (WithMonad w) i
        -> w (StdOutErr n ())
 gpg act key inp = do
-  ga0  <- withGPG Nothing
+  ga0  <- withGPG (Just "/usr/local/MacGPG2/bin/gpg2")
   gahd <- setHomeDirectory Nothing ga0
   kf   <- withKey key gahd
   case act of
@@ -181,6 +181,17 @@ instance Exception GPGException where
       CantFindGPG pth     -> "Cannot find expected GPG executable: " ++ pth
       KeyNotFound kf      -> "Cannot find the identifier for the specified KeyFile: " ++ getKey kf
       ErrorRunningGPG peu -> "Error running gpg:\n" ++ displayException peu
+
+gpgTest :: (Withable w, MonadBaseControl IO (WithMonad w))
+           => FilePath -> B.ByteString -> w Bool
+gpgTest keyFile cnts = do
+  enc  <- gpg Encrypt kf (SBC.fromStrict cnts)
+  liftActionIO (putStrLn "encrypted")
+  dec  <- gpg Decrypt kf (SBC.putStrLn (SBC.distribute enc))
+  dec' <- liftAction (SBC.toStrict_ (SBC.putStrLn (SBC.distribute dec)))
+  return (cnts == dec')
+  where
+    kf = KeyFile keyFile
 
 --------------------------------------------------------------------------------
 
