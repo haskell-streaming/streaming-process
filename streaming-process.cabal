@@ -48,7 +48,7 @@ test-suite simple-processes
   build-depends:       streaming-process
                      , base
                      , bytestring
-                     , hspec == 2.4.*
+                     , hspec >= 2.4 && < 2.8
                      , QuickCheck == 2.*
                      , quickcheck-instances
                      , streaming
